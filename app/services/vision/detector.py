@@ -3,7 +3,20 @@ import torch
 from torchvision.ops import batched_nms
 from ultralytics import YOLO, YOLOWorld
 
-COCO = {"person", "chair", "laptop", "tv", "keyboard", "mouse", "cell phone", "bench", "couch", "dining table", "bottle", "book"}
+COCO = {
+    "person",
+    "chair",
+    "laptop",
+    "tv",
+    "keyboard",
+    "mouse",
+    "cell phone",
+    "bench",
+    "couch",
+    "dining table",
+    "bottle",
+    "book",
+}
 
 
 class Detector:
@@ -34,10 +47,10 @@ class Detector:
         h, w = frame.shape[:2]
         dets = self._predict(frame)
         if self.tiling:
-            tw, th, ov = int(w * 0.6), int(h * 0.6), 0.2
+            tw, th, _ov = int(w * 0.6), int(h * 0.6), 0.2
             for ox in (0, w - tw):
                 for oy in (0, h - th):
-                    dets += self._predict(frame[oy:oy + th, ox:ox + tw], ox, oy)
+                    dets += self._predict(frame[oy : oy + th, ox : ox + tw], ox, oy)
         if not dets:
             return []
         boxes = torch.tensor([d[:4] for d in dets])

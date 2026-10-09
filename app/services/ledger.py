@@ -3,7 +3,12 @@ import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
+
 from app.core.config import settings
 
 _lock = threading.Lock()
@@ -37,22 +42,27 @@ def append(kind: str, payload: dict) -> dict:
         row = c.execute("SELECT hash FROM ledger ORDER BY seq DESC LIMIT 1").fetchone()
         prev = row[0] if row else GENESIS
         ts = datetime.now(timezone.utc).isoformat()
-        h = hashlib.sha256(canonical({"kind": kind, "payload": payload, "prev": prev, "ts": ts})).hexdigest()
+        h = hashlib.sha256(
+            canonical({"kind": kind, "payload": payload, "prev": prev, "ts": ts})
+        ).hexdigest()
         sig = _key.sign(h.encode()).hex()
         cur = c.execute(
             "INSERT INTO ledger(kind,payload,prev_hash,hash,sig,ts) VALUES(?,?,?,?,?,?)",
-            (kind, json.dumps(payload, default=str), prev, h, sig, ts)
+            (kind, json.dumps(payload, default=str), prev, h, sig, ts),
         )
         c.commit()
         return {"seq": cur.lastrowid, "hash": h}
 
 
 def verify_chain(rows: list[dict], public_key_hex: str):
-    """rows ordered by seq: dict(kind,payload(dict),prev_hash,hash,sig,ts). Returns (ok, bad_index)."""
+    """Rows ordered by seq: dict(kind,payload(dict),prev_hash,hash,sig,ts).
+    Returns (ok, bad_index)."""
     pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(public_key_hex))
     prev = GENESIS
     for i, r in enumerate(rows):
-        h = hashlib.sha256(canonical({"kind": r["kind"], "payload": r["payload"], "prev": prev, "ts": r["ts"]})).hexdigest()
+        h = hashlib.sha256(
+            canonical({"kind": r["kind"], "payload": r["payload"], "prev": prev, "ts": r["ts"]})
+        ).hexdigest()
         try:
             pub.verify(bytes.fromhex(r["sig"]), h.encode())
         except Exception:

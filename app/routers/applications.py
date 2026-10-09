@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
-from app.core.deps import require
+
 from app.core.audit import audit
-from app.db.mongo import db, oid, next_centre_code, gen_tracking_code, ser
-from app.services.credentials import gen_password, create_login
-from app.services.plausibility import plausibility
+from app.core.deps import invalidate, require
 from app.core.security import hash_pw
+from app.db.mongo import db, gen_tracking_code, next_centre_code, oid, ser
+from app.services.credentials import create_login, gen_password
+from app.services.plausibility import plausibility
 
 router = APIRouter()
 GOVT_WRITE = ("super_admin", "scheme_officer")
@@ -31,18 +33,27 @@ def create_centre_from_application(a: dict, user, created_by_govt=False):
         "lng": a.get("lng"),
         "contact_phone": a["contact_phone"],
         "contact_email": a.get("contact_email"),
-        "equipment": [{"class": e["class"], "label": e.get("label", e["class"]),
-                       "sanctioned_qty": e["qty"], "declared_qty": 0} for e in a["equipment"]],
+        "equipment": [
+            {
+                "class": e["class"],
+                "label": e.get("label", e["class"]),
+                "sanctioned_qty": e["qty"],
+                "declared_qty": 0,
+            }
+            for e in a["equipment"]
+        ],
         "status": "pending_setup",
         "risk_score": 0,
         "created_by_govt": created_by_govt,
         "created_at": now,
-        "updated_at": now
+        "updated_at": now,
     }
     cid = db.centres.insert_one(centre).inserted_id
     try:
         pwd = gen_password()
-        create_login(code, pwd, "centre_admin", cid, a["centre_name"] + " Admin", a["contact_phone"])
+        create_login(
+            code, pwd, "centre_admin", cid, a["centre_name"] + " Admin", a["contact_phone"]
+        )
     except Exception:
         db.centres.delete_one({"_id": cid})
         raise
@@ -55,7 +66,9 @@ def create_application(body: dict):
     tpl = db.trade_templates.find_one({"_id": oid(body["trade_template_id"])})
     if not tpl:
         raise HTTPException(404, detail={"detail": "Trade template not found", "code": "NOT_FOUND"})
-    warns = plausibility(body["max_trainees"], body.get("equipment", []), tpl.get("equipment_rules", []))
+    warns = plausibility(
+        body["max_trainees"], body.get("equipment", []), tpl.get("equipment_rules", [])
+    )
     doc = {
         "tracking_code": gen_tracking_code(),
         "applicant_name": body["applicant_name"],
@@ -84,7 +97,7 @@ def create_application(body: dict):
         "created_by_govt": False,
         "submitted_at": now,
         "updated_at": now,
-        "events": [{"actor": None, "action": "submitted", "comment": None, "ts": now}]
+        "events": [{"actor": None, "action": "submitted", "comment": None, "ts": now}],
     }
     doc["_id"] = db.applications.insert_one(doc).inserted_id
     return {"tracking_code": doc["tracking_code"], "plausibility_warnings": warns}
@@ -100,16 +113,26 @@ def track_application(code: str, phone: str):
 
 @router.put("/public/applications/{code}")
 def resubmit_application(code: str, body: dict):
-    a = db.applications.find_one({"tracking_code": code, "contact_phone": body.get("contact_phone")})
+    a = db.applications.find_one(
+        {"tracking_code": code, "contact_phone": body.get("contact_phone")}
+    )
     if not a or a["status"] != "query_raised":
         raise HTTPException(404, detail={"detail": "Not resubmittable", "code": "BAD_STATE"})
     now = datetime.now(timezone.utc)
-    db.applications.update_one({"_id": a["_id"]}, {"$set": {
-        "status": "resubmitted",
-        "max_trainees": body.get("max_trainees", a["max_trainees"]),
-        "equipment": body.get("equipment", a["equipment"]),
-        "updated_at": now
-    }, "$push": {"events": {"actor": None, "action": "resubmitted", "comment": None, "ts": now}}})
+    db.applications.update_one(
+        {"_id": a["_id"]},
+        {
+            "$set": {
+                "status": "resubmitted",
+                "max_trainees": body.get("max_trainees", a["max_trainees"]),
+                "equipment": body.get("equipment", a["equipment"]),
+                "updated_at": now,
+            },
+            "$push": {
+                "events": {"actor": None, "action": "resubmitted", "comment": None, "ts": now}
+            },
+        },
+    )
     return {"status": "resubmitted"}
 
 
@@ -123,7 +146,7 @@ def approve(app_id: str, user=Depends(require(*GOVT_WRITE))):
     now = datetime.now(timezone.utc)
     prev = db.applications.find_one_and_update(
         {"_id": oid(app_id), "status": {"$in": ["submitted", "under_review", "resubmitted"]}},
-        {"$set": {"status": "approved", "reviewed_by": oid(user["id"]), "updated_at": now}}
+        {"$set": {"status": "approved", "reviewed_by": oid(user["id"]), "updated_at": now}},
     )
     if not prev:
         raise HTTPException(409, detail={"detail": "Not approvable", "code": "BAD_STATE"})
@@ -132,11 +155,28 @@ def approve(app_id: str, user=Depends(require(*GOVT_WRITE))):
     except Exception:
         db.applications.update_one({"_id": prev["_id"]}, {"$set": {"status": prev["status"]}})
         raise
-    db.applications.update_one({"_id": prev["_id"]}, {"$set": {"centre_id": centre["_id"]},
-        "$push": {"events": {"actor": oid(user["id"]), "action": "approved", "comment": None, "ts": now}}})
+    db.applications.update_one(
+        {"_id": prev["_id"]},
+        {
+            "$set": {"centre_id": centre["_id"]},
+            "$push": {
+                "events": {
+                    "actor": oid(user["id"]),
+                    "action": "approved",
+                    "comment": None,
+                    "ts": now,
+                }
+            },
+        },
+    )
     audit(user, "application.approve", "application", app_id, {"centre_code": code})
-    return {"centre_id": str(centre["_id"]), "login_id": code, "temporary_password": pwd,
-            "expires_in_hours": 72, "note": "Shown once. Share securely."}
+    return {
+        "centre_id": str(centre["_id"]),
+        "login_id": code,
+        "temporary_password": pwd,
+        "expires_in_hours": 72,
+        "note": "Shown once. Share securely.",
+    }
 
 
 @router.post("/applications/{app_id}/reject")
@@ -144,12 +184,30 @@ def reject(app_id: str, body: dict, user=Depends(require(*GOVT_WRITE))):
     now = datetime.now(timezone.utc)
     prev = db.applications.find_one_and_update(
         {"_id": oid(app_id), "status": {"$in": ["submitted", "under_review", "resubmitted"]}},
-        {"$set": {"status": "rejected", "reviewed_by": oid(user["id"]), "review_comment": body.get("comment", ""), "updated_at": now}}
+        {
+            "$set": {
+                "status": "rejected",
+                "reviewed_by": oid(user["id"]),
+                "review_comment": body.get("comment", ""),
+                "updated_at": now,
+            }
+        },
     )
     if not prev:
         raise HTTPException(409, detail={"detail": "Not rejectable", "code": "BAD_STATE"})
-    db.applications.update_one({"_id": prev["_id"]}, {"$push": {
-        "events": {"actor": oid(user["id"]), "action": "rejected", "comment": body.get("comment", ""), "ts": now}}})
+    db.applications.update_one(
+        {"_id": prev["_id"]},
+        {
+            "$push": {
+                "events": {
+                    "actor": oid(user["id"]),
+                    "action": "rejected",
+                    "comment": body.get("comment", ""),
+                    "ts": now,
+                }
+            }
+        },
+    )
     audit(user, "application.reject", "application", app_id, {"comment": body.get("comment")})
     return {"status": "rejected"}
 
@@ -159,18 +217,36 @@ def query(app_id: str, body: dict, user=Depends(require(*GOVT_WRITE))):
     now = datetime.now(timezone.utc)
     prev = db.applications.find_one_and_update(
         {"_id": oid(app_id), "status": {"$in": ["submitted", "under_review", "resubmitted"]}},
-        {"$set": {"status": "query_raised", "reviewed_by": oid(user["id"]), "review_comment": body.get("comment", ""), "updated_at": now}}
+        {
+            "$set": {
+                "status": "query_raised",
+                "reviewed_by": oid(user["id"]),
+                "review_comment": body.get("comment", ""),
+                "updated_at": now,
+            }
+        },
     )
     if not prev:
         raise HTTPException(409, detail={"detail": "Not queryable", "code": "BAD_STATE"})
-    db.applications.update_one({"_id": prev["_id"]}, {"$push": {
-        "events": {"actor": oid(user["id"]), "action": "query", "comment": body.get("comment", ""), "ts": now}}})
+    db.applications.update_one(
+        {"_id": prev["_id"]},
+        {
+            "$push": {
+                "events": {
+                    "actor": oid(user["id"]),
+                    "action": "query",
+                    "comment": body.get("comment", ""),
+                    "ts": now,
+                }
+            }
+        },
+    )
     audit(user, "application.query", "application", app_id, {"comment": body.get("comment")})
     return {"status": "query_raised"}
 
 
 @router.get("/applications")
-def list_applications(status: str = None, user=Depends(require(*GOVT_WRITE, "auditor"))):
+def list_applications(status: str | None = None, user=Depends(require(*GOVT_WRITE, "auditor"))):
     q = {"status": status} if status else {}
     return ser(list(db.applications.find(q).sort("submitted_at", -1)))
 
@@ -181,7 +257,11 @@ def get_application(app_id: str, user=Depends(require(*GOVT_WRITE, "auditor"))):
     if not a:
         raise HTTPException(404, detail={"detail": "Not found", "code": "NOT_FOUND"})
     tpl = db.trade_templates.find_one({"_id": a["trade_template_id"]})
-    warns = plausibility(a["max_trainees"], a.get("equipment", []), tpl.get("equipment_rules", [])) if tpl else []
+    warns = (
+        plausibility(a["max_trainees"], a.get("equipment", []), tpl.get("equipment_rules", []))
+        if tpl
+        else []
+    )
     return {**ser(a), "plausibility_warnings": warns}
 
 
@@ -192,7 +272,9 @@ def create_centre_direct(body: dict, user=Depends(require("super_admin"))):
     tpl = db.trade_templates.find_one({"_id": oid(body["trade_template_id"])})
     if not tpl:
         raise HTTPException(404, detail={"detail": "Trade template not found", "code": "NOT_FOUND"})
-    warns = plausibility(body["max_trainees"], body.get("equipment", []), tpl.get("equipment_rules", []))
+    warns = plausibility(
+        body["max_trainees"], body.get("equipment", []), tpl.get("equipment_rules", [])
+    )
     doc = {
         "tracking_code": gen_tracking_code(),
         "applicant_name": "Government (Direct)",
@@ -221,25 +303,41 @@ def create_centre_direct(body: dict, user=Depends(require("super_admin"))):
         "created_by_govt": True,
         "submitted_at": now,
         "updated_at": now,
-        "events": [{"actor": oid(user["id"]), "action": "direct_approved", "comment": None, "ts": now}]
+        "events": [
+            {"actor": oid(user["id"]), "action": "direct_approved", "comment": None, "ts": now}
+        ],
     }
     app_id = db.applications.insert_one(doc).inserted_id
     centre, code, pwd = create_centre_from_application(doc, user, created_by_govt=True)
     db.applications.update_one({"_id": app_id}, {"$set": {"centre_id": centre["_id"]}})
     audit(user, "application.direct_create", "application", str(app_id), {"centre_code": code})
-    return {"centre_id": str(centre["_id"]), "login_id": code, "temporary_password": pwd,
-            "expires_in_hours": 72, "note": "Shown once. Share securely.", "plausibility_warnings": warns}
+    return {
+        "centre_id": str(centre["_id"]),
+        "login_id": code,
+        "temporary_password": pwd,
+        "expires_in_hours": 72,
+        "note": "Shown once. Share securely.",
+        "plausibility_warnings": warns,
+    }
 
 
 @router.get("/centres")
-def list_centres(district: str = None, status: str = None, q: str = None, user=Depends(require(*GOVT_WRITE, "auditor"))):
+def list_centres(
+    district: str | None = None,
+    status: str | None = None,
+    q: str | None = None,
+    user=Depends(require(*GOVT_WRITE, "auditor")),
+):
     query = {}
     if district:
         query["district"] = district
     if status:
         query["status"] = status
     if q:
-        query["$or"] = [{"code": {"$regex": q, "$options": "i"}}, {"name": {"$regex": q, "$options": "i"}}]
+        query["$or"] = [
+            {"code": {"$regex": q, "$options": "i"}},
+            {"name": {"$regex": q, "$options": "i"}},
+        ]
     centres = list(db.centres.find(query).sort("created_at", -1))
     centre_ids = [c["_id"] for c in centres]
     flags_by_centre = {}
@@ -250,12 +348,20 @@ def list_centres(district: str = None, status: str = None, q: str = None, user=D
     cams_by_centre = {}
     if centre_ids:
         for c in db.cameras.find({"centre_id": {"$in": centre_ids}}):
-            cams_by_centre.setdefault(str(c["centre_id"]), {"online": 0, "offline": 0, "tampered": 0})
+            cams_by_centre.setdefault(
+                str(c["centre_id"]), {"online": 0, "offline": 0, "tampered": 0}
+            )
             cams_by_centre[str(c["centre_id"])][c.get("status", "unknown")] += 1
     out = []
     for c in centres:
         cid = str(c["_id"])
-        out.append({**ser(c), "open_flags": flags_by_centre.get(cid, 0), "cameras": cams_by_centre.get(cid, {"online": 0, "offline": 0, "tampered": 0})})
+        out.append(
+            {
+                **ser(c),
+                "open_flags": flags_by_centre.get(cid, 0),
+                "cameras": cams_by_centre.get(cid, {"online": 0, "offline": 0, "tampered": 0}),
+            }
+        )
     return out
 
 
@@ -265,7 +371,9 @@ def get_centre(cid: str, user=Depends(require(*GOVT_WRITE, "auditor"))):
     if not c:
         raise HTTPException(404, detail={"detail": "Not found", "code": "NOT_FOUND"})
     cams = list(db.cameras.find({"centre_id": oid(cid)}))
-    flags = list(db.flags.find({"centre_id": oid(cid), "status": {"$in": OPEN}}).sort("created_at", -1))
+    flags = list(
+        db.flags.find({"centre_id": oid(cid), "status": {"$in": OPEN}}).sort("created_at", -1)
+    )
     return {"centre": ser(c), "cameras": ser(cams), "open_flags": ser(flags)}
 
 
@@ -278,11 +386,22 @@ def reset_credentials(cid: str, user=Depends(require(*GOVT_WRITE))):
     if not admin:
         raise HTTPException(404, detail={"detail": "Centre admin not found", "code": "NOT_FOUND"})
     pwd = gen_password()
-    db.users.update_one({"_id": admin["_id"]}, {"$set": {
-        "password_hash": hash_pw(pwd),
-        "must_change_password": True,
-        "temp_password_expires_at": datetime.now(timezone.utc) + timedelta(hours=72)
-    }, "$inc": {"token_version": 1}})
+    db.users.update_one(
+        {"_id": admin["_id"]},
+        {
+            "$set": {
+                "password_hash": hash_pw(pwd),
+                "must_change_password": True,
+                "temp_password_expires_at": datetime.now(timezone.utc) + timedelta(hours=72),
+            },
+            "$inc": {"token_version": 1},
+        },
+    )
     db.refresh_tokens.delete_many({"user_id": admin["_id"]})
     invalidate(admin["_id"])
-    return {"login_id": c["code"], "temporary_password": pwd, "expires_in_hours": 72, "note": "Shown once. Share securely."}
+    return {
+        "login_id": c["code"],
+        "temporary_password": pwd,
+        "expires_in_hours": 72,
+        "note": "Shown once. Share securely.",
+    }

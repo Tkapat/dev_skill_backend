@@ -11,8 +11,11 @@ def quality_gate(frame, prev_gray=None, prev_gap_s=0, ref_gray=None):
         reasons.append("covered")
     if cv2.Laplacian(g, cv2.CV_64F).var() < 40:
         reasons.append("blurry")
-    if prev_gray is not None and prev_gap_s >= 20 and \
-       np.abs(g.astype(np.int16) - prev_gray.astype(np.int16)).mean() < 0.5:
+    if (
+        prev_gray is not None
+        and prev_gap_s >= 20
+        and np.abs(g.astype(np.int16) - prev_gray.astype(np.int16)).mean() < 0.5
+    ):
         reasons.append("frozen")
     if ref_gray is not None and ref_gray.shape == g.shape:
         (dx, dy), _ = cv2.phaseCorrelate(np.float32(ref_gray), np.float32(g))

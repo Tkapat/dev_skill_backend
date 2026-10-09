@@ -1,4 +1,5 @@
 from apscheduler.schedulers.background import BackgroundScheduler
+
 from app.services.sync import sync_tick
 
 sched = BackgroundScheduler(timezone="UTC")

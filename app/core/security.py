@@ -1,10 +1,12 @@
+import hashlib
 import re
 import secrets
-import hashlib
-import jwt
 from datetime import datetime, timedelta, timezone
+
+import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, InvalidHashError
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
+
 from app.core.config import settings
 
 _ph = PasswordHasher()
@@ -24,18 +26,28 @@ def check_pw(h: str | None, p: str) -> bool:
 
 
 def password_ok(p: str) -> bool:
-    return (len(p) >= 10 and re.search(r"[a-z]", p) and re.search(r"[A-Z]", p)
-            and re.search(r"\d", p) and re.search(r"[^\w\s]", p)) is not None
+    return (
+        len(p) >= 10
+        and re.search(r"[a-z]", p)
+        and re.search(r"[A-Z]", p)
+        and re.search(r"\d", p)
+        and re.search(r"[^\w\s]", p)
+    ) is not None
 
 
 def _tok(payload: dict, minutes: int) -> str:
     now = datetime.now(timezone.utc)
-    return jwt.encode({**payload, "iat": now, "exp": now + timedelta(minutes=minutes)},
-                      settings.jwt_secret, algorithm="HS256")
+    return jwt.encode(
+        {**payload, "iat": now, "exp": now + timedelta(minutes=minutes)},
+        settings.jwt_secret,
+        algorithm="HS256",
+    )
 
 
 def make_access(u: dict) -> str:
-    return _tok({"sub": str(u["_id"]), "tv": u.get("token_version", 0), "typ": "access"}, ACCESS_MIN)
+    return _tok(
+        {"sub": str(u["_id"]), "tv": u.get("token_version", 0), "typ": "access"}, ACCESS_MIN
+    )
 
 
 def make_mfa_token(u: dict) -> str:

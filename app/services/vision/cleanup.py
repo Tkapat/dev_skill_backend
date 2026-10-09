@@ -48,6 +48,6 @@ def cleanup(dets, shape, roi_norm, zones_norm, presence_rule, staff_to_subtract)
         "people_boxes": [p[:4] for p in people],
         "counted_boxes": [p[:4] for p in counted],
         "people_count": max(0, len(counted) - staff_to_subtract),
-        "equipment": [o for o in objs] + ([c for c in chairs]),
-        "all_people": people
+        "equipment": list(objs) + list(chairs),
+        "all_people": people,
     }

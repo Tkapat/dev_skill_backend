@@ -1,5 +1,4 @@
 import cv2
-import numpy as np
 
 
 def blurred_thumbnail(frame, person_boxes, annotate_boxes=(), width=640) -> bytes:
@@ -16,5 +15,5 @@ def blurred_thumbnail(frame, person_boxes, annotate_boxes=(), width=640) -> byte
         cv2.rectangle(out, (int(x1), int(y1)), (int(x2), int(y2)), (79, 70, 229), 2)
     scale = width / out.shape[1]
     out = cv2.resize(out, (width, int(out.shape[0] * scale)))
-    ok, buf = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 60])
+    _ok, buf = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 60])
     return buf.tobytes()

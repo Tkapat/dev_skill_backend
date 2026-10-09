@@ -1,8 +1,10 @@
-import numpy as np
-import cv2
 import base64
+
+import cv2
+import numpy as np
 from cryptography.fernet import Fernet
 from insightface.app import FaceAnalysis
+
 from app.core.config import settings
 
 _fernet = Fernet(settings.fernet_key.encode())
@@ -12,7 +14,7 @@ THRESHOLD = 0.45
 
 
 def decode(image_b64: str):
-    data = base64.b64decode(image_b64.split(",")[-1])
+    data = base64.b64decode(image_b64.rsplit(",", maxsplit=1)[-1])
     return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
 
 

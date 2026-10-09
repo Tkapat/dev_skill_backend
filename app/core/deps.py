@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
+
 import jwt
 from cachetools import TTLCache
 from fastapi import Depends, Header, HTTPException
-from app.db.mongo import db, oid
+
 from app.core.security import decode
+from app.db.mongo import db, oid
 
 _cache = TTLCache(maxsize=512, ttl=30)
 CENTRE_ROLES = {"centre_admin", "trainer"}
@@ -50,6 +52,7 @@ def require(*roles, allow_unchanged_password=False):
                 _err(403, "CREDENTIALS_EXPIRED", "Credentials expired")
             _err(403, "PASSWORD_CHANGE_REQUIRED", "Change password first")
         return user
+
     return dep
 
 

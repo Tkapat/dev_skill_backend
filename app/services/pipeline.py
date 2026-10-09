@@ -1,8 +1,9 @@
 import time
+
 from app.services.consolidate import consolidate
-from app.services.vision.quality import quality_gate
 from app.services.vision.cleanup import cleanup
 from app.services.vision.privacy import blurred_thumbnail
+from app.services.vision.quality import quality_gate
 
 
 def analyse_hour(grab_frame, detector, tpl, cam, staff_subtract, ref_gray=None, sleep=0):
@@ -22,17 +23,30 @@ def analyse_hour(grab_frame, detector, tpl, cam, staff_subtract, ref_gray=None, 
                 tamper.extend(q["reasons"])
                 continue
             dets = detector.detect(frame)
-            c = cleanup(dets, frame.shape, cam["roi_polygon"], cam["zones"], tpl["presence_rule"], staff_subtract)
+            c = cleanup(
+                dets,
+                frame.shape,
+                cam["roi_polygon"],
+                cam["zones"],
+                tpl["presence_rule"],
+                staff_subtract,
+            )
             counts.append(c["people_count"])
             for e in c["equipment"]:
                 eq_counts.setdefault(e[5], []).append(0)
             per_cls = {}
             for e in c["equipment"]:
                 per_cls[e[5]] = per_cls.get(e[5], 0) + 1
-            for k in eq_counts:
+            for k, _v in eq_counts.items():
                 eq_counts[k][-1] = per_cls.get(k, 0)
             if len(thumbs) < 3:
-                thumbs.append(blurred_thumbnail(frame, c["all_people"] and [p[:4] for p in c["all_people"]], c["counted_boxes"]))
+                thumbs.append(
+                    blurred_thumbnail(
+                        frame,
+                        c["all_people"] and [p[:4] for p in c["all_people"]],
+                        c["counted_boxes"],
+                    )
+                )
             taken += 1
             if sleep:
                 time.sleep(sleep)
@@ -41,7 +55,10 @@ def analyse_hour(grab_frame, detector, tpl, cam, staff_subtract, ref_gray=None, 
             break
         target = min(taken + tpl["step_frames"], tpl["max_frames"])
     state = "ok" if res["consistent"] else "uncertain"
-    equipment = {k: consolidate(v, tpl["count_tolerance"], float(tpl["agree_ratio"]), min_frames=3) for k, v in eq_counts.items()}
+    equipment = {
+        k: consolidate(v, tpl["count_tolerance"], float(tpl["agree_ratio"]), min_frames=3)
+        for k, v in eq_counts.items()
+    }
     return {
         "observed": res["observed"],
         "ci_low": res["ci_low"],
@@ -51,5 +68,5 @@ def analyse_hour(grab_frame, detector, tpl, cam, staff_subtract, ref_gray=None, 
         "per_frame": counts,
         "equipment": equipment,
         "tamper": sorted(set(tamper)),
-        "thumbs": thumbs
+        "thumbs": thumbs,
     }

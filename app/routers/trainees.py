@@ -1,21 +1,32 @@
 from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
-from app.core.deps import require, assert_centre_access
+
+from app.core.deps import require
 from app.db.mongo import db, oid, ser
 
 router = APIRouter()
 
 
 def _cap_err():
-    raise HTTPException(409, detail={"detail": "Sanctioned limit reached. Request extra enrolment.", "code": "ENROLMENT_CAP_REACHED"})
+    raise HTTPException(
+        409,
+        detail={
+            "detail": "Sanctioned limit reached. Request extra enrolment.",
+            "code": "ENROLMENT_CAP_REACHED",
+        },
+    )
 
 
 def take_seat(centre_id) -> bool:
     """Atomic: increments only if enrolled_count < max_trainees. Same pattern for reactivation."""
     r = db.centres.update_one(
-        {"_id": centre_id, "status": {"$nin": ["suspended", "terminated"]},
-         "$expr": {"$lt": ["$enrolled_count", "$max_trainees"]}},
-        {"$inc": {"enrolled_count": 1}}
+        {
+            "_id": centre_id,
+            "status": {"$nin": ["suspended", "terminated"]},
+            "$expr": {"$lt": ["$enrolled_count", "$max_trainees"]},
+        },
+        {"$inc": {"enrolled_count": 1}},
     )
     return r.modified_count == 1
 
@@ -26,7 +37,9 @@ def enrol(body: dict, user=Depends(require("centre_admin"))):
     if not take_seat(cid):
         c = db.centres.find_one({"_id": cid}, {"status": 1})
         if c["status"] in ("suspended", "terminated"):
-            raise HTTPException(403, detail={"detail": "Centre not active", "code": "CENTRE_INACTIVE"})
+            raise HTTPException(
+                403, detail={"detail": "Centre not active", "code": "CENTRE_INACTIVE"}
+            )
         _cap_err()
     try:
         doc = {
@@ -35,7 +48,7 @@ def enrol(body: dict, user=Depends(require("centre_admin"))):
             "full_name": body["full_name"].strip(),
             "external_id": body.get("external_id"),
             "active": True,
-            "created_at": datetime.now(timezone.utc)
+            "created_at": datetime.now(timezone.utc),
         }
         doc["_id"] = db.trainees.insert_one(doc).inserted_id
     except Exception:
@@ -57,7 +70,7 @@ def list_trainees(batch_id: str | None = None, user=Depends(require("centre_admi
 def deactivate(tid: str, user=Depends(require("centre_admin"))):
     r = db.trainees.update_one(
         {"_id": oid(tid), "centre_id": user["centre_id"], "active": True},
-        {"$set": {"active": False}}
+        {"$set": {"active": False}},
     )
     if r.modified_count:
         db.centres.update_one({"_id": user["centre_id"]}, {"$inc": {"enrolled_count": -1}})

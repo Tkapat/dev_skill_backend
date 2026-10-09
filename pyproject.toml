@@ -1,0 +1,61 @@
+[project]
+name = "dev_skill_backend"
+version = "0.1.0"
+description = "Dev_Skill Backend API"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic-settings",
+    "python-dotenv",
+    "pymongo",
+    "cachetools",
+    "apscheduler",
+    "python-multipart",
+    "httpx",
+    "ultralytics",
+    "opencv-python-headless",
+    "numpy",
+    "pillow",
+    "insightface",
+    "onnxruntime",
+    "cryptography",
+    "torch",
+    "torchvision",
+    "argon2-cffi",
+    "pyotp",
+    "python-jose[cryptography]",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "DTZ", # flake8-datetimez
+    "PLC", # pylint-copypaste
+    "RUF", # ruff-specific
+]
+ignore = [
+    "B008",  # Depends() in defaults - FastAPI standard pattern
+    "BLE001", # Blind except Exception - acceptable for JWT decode/ObjectId parsing
+]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

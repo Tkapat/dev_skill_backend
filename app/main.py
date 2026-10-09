@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.core.config import settings
+from app.routers import applications, attendance, auth, files, trainees
 from app.services import scheduler
-from app.routers import applications, trainees, attendance, auth, files
+from app.services.sync import register_device
 
 app = FastAPI(title="Dev_Skill API")
 app.add_middleware(
@@ -10,7 +12,7 @@ app.add_middleware(
     allow_origins=[o.strip() for o in settings.allowed_origins.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
 for r in (applications.router, trainees.router, attendance.router, auth.router, files.router):
@@ -19,7 +21,6 @@ for r in (applications.router, trainees.router, attendance.router, auth.router, 
 
 @app.on_event("startup")
 def _start():
-    from app.services.sync import register_device
     register_device()
     scheduler.start()
 

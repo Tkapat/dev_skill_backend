@@ -1,7 +1,9 @@
+from datetime import datetime, timezone
+
 import gridfs
 from bson import Binary
-from datetime import datetime, timezone
-from fastapi import APIRouter, UploadFile, HTTPException, Response, Form
+from fastapi import APIRouter, Form, HTTPException, Response, UploadFile
+
 from app.db.mongo import db, oid, verify_file_sig
 
 router = APIRouter()
@@ -16,7 +18,7 @@ def save_evidence(centre_id, jpeg: bytes, eid: str, session_id=None):
         "centre_id": centre_id,
         "session_id": session_id,
         "data": Binary(jpeg),
-        "created_at": datetime.now(timezone.utc)
+        "created_at": datetime.now(timezone.utc),
     }
     if session_id is not None:
         doc["session_id"] = session_id
@@ -32,27 +34,43 @@ def get_file(kind: str, fid: str, exp: int = 0, sig: str = ""):
         d = db.evidence_blobs.find_one({"_id": fid})
         if not d:
             raise HTTPException(404, detail={"detail": "Not found", "code": "NOT_FOUND"})
-        return Response(bytes(d["data"]), media_type="image/jpeg", headers={"Cache-Control": "private, no-store"})
+        return Response(
+            bytes(d["data"]),
+            media_type="image/jpeg",
+            headers={"Cache-Control": "private, no-store"},
+        )
     g = fs.get(oid(fid))
-    return Response(g.read(), media_type=g.content_type or "application/octet-stream",
-                    headers={"Cache-Control": "private, no-store"})
+    return Response(
+        g.read(),
+        media_type=g.content_type or "application/octet-stream",
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @router.post("/public/applications/{code}/documents")
 async def upload_doc(code: str, phone: str = Form(...), file: UploadFile = None):
     a = db.applications.find_one({"tracking_code": code, "contact_phone": phone})
     if not a or len(a.get("documents") or []) >= 5:
-        raise HTTPException(404, detail={"detail": "Not found or limit reached", "code": "NOT_FOUND"})
+        raise HTTPException(
+            404, detail={"detail": "Not found or limit reached", "code": "NOT_FOUND"}
+        )
     if file.content_type not in ALLOWED:
         raise HTTPException(422, detail={"detail": "PDF, JPG or PNG only", "code": "BAD_FILE"})
     data = await file.read(5 * 1024 * 1024 + 1)
     if len(data) > 5 * 1024 * 1024:
         raise HTTPException(422, detail={"detail": "Max 5 MB", "code": "FILE_TOO_LARGE"})
     fid = fs.put(data, filename=file.filename, content_type=file.content_type)
-    db.applications.update_one({"_id": a["_id"]}, {"$push": {"documents": {
-        "name": file.filename,
-        "file_id": str(fid),
-        "size": len(data),
-        "content_type": file.content_type
-    }}})
+    db.applications.update_one(
+        {"_id": a["_id"]},
+        {
+            "$push": {
+                "documents": {
+                    "name": file.filename,
+                    "file_id": str(fid),
+                    "size": len(data),
+                    "content_type": file.content_type,
+                }
+            }
+        },
+    )
     return {"file_id": str(fid)}

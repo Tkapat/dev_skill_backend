@@ -16,8 +16,8 @@ def consolidate(counts: list[int], tol: int = 1, agree_ratio: float = 0.6, min_f
     consistent = len(agree) / n >= agree_ratio
     return {
         "consistent": consistent,
-        "observed": mode if consistent else int(round(med)),
+        "observed": mode if consistent else round(med),
         "ci_low": min(agree) if consistent else min(counts),
         "ci_high": max(agree) if consistent else max(counts),
-        "n": n
+        "n": n,
     }

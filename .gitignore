@@ -67,3 +67,8 @@ dmypy.json
 # Distribution
 *.tar.gz
 *.whl
+
+#.md
+migrationToMongoDB.md
+mongo.md
+backendStarCode.md

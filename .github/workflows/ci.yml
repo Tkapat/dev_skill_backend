@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest pytest-asyncio httpx
+
+      - name: Run Ruff (lint)
+        run: |
+          ruff check app/ scripts/
+
+      - name: Run Ruff (format check)
+        run: |
+          ruff format --check app/ scripts/
+
+      - name: Type check (if mypy config exists)
+        run: |
+          if [ -f pyproject.toml ] || [ -f mypy.ini ]; then
+            pip install mypy
+            mypy app/
+          else
+            echo "No mypy config, skipping type check"
+          fi
+
+      - name: Syntax check
+        run: |
+          python -m py_compile $(find app -name "*.py" -o -name "scripts" -name "*.py")
+
+      - name: Verify imports (requires env vars)
+        run: |
+          MONGODB_URI=mongodb://localhost:27017 \
+          MONGODB_DB=test \
+          JWT_SECRET=test-secret \
+          FERNET_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())") \
+          EDGE_SIGNING_KEY_HEX=$(python -c "import secrets; print(secrets.token_hex(32))") \
+          FILE_URL_SECRET=test-secret \
+          python -c "
+          from app.core.config import settings
+          from app.db.mongo import db, oid, ser, next_centre_code
+          from app.core.security import hash_pw, check_pw
+          from app.core.deps import current_user, require
+          from app.core.audit import audit
+          from app.services.credentials import gen_password
+          from app.routers import auth, files, applications, trainees, attendance
+          from app.services import dbfuncs, sync, ledger, flag_engine
+          print('All imports OK')
+          "
+
+  # Optional: Run against real MongoDB (requires Atlas URI secret)
+  # integration-test:
+  #   runs-on: ubuntu-latest
+  #   needs: lint-and-test
+  #   if: ${{ secrets.MONGODB_URI != '' }}
+  #   services:
+  #     mongodb:
+  #       image: mongo:7
+  #       ports: ["27017:27017"]
+  #       options: >-
+  #         --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ env.PYTHON_VERSION }}
+  #         cache: "pip"
+  #     - run: pip install -r requirements.txt
+  #     - run: pip install pytest pytest-asyncio httpx
+  #     - name: Run init_db
+  #       env:
+  #         MONGODB_URI: mongodb://localhost:27017
+  #         MONGODB_DB: test_db
+  #         JWT_SECRET: ${{ secrets.JWT_SECRET }}
+  #         FERNET_KEY: ${{ secrets.FERNET_KEY }}
+  #         EDGE_SIGNING_KEY_HEX: ${{ secrets.EDGE_SIGNING_KEY_HEX }}
+  #         FILE_URL_SECRET: ${{ secrets.FILE_URL_SECRET }}
+  #       run: python -m scripts.init_db
+  #     - name: Run pytest
+  #       env:
+  #         MONGODB_URI: mongodb://localhost:27017
+  #         MONGODB_DB: test_db
+  #         JWT_SECRET: ${{ secrets.JWT_SECRET }}
+  #         FERNET_KEY: ${{ secrets.FERNET_KEY }}
+  #         EDGE_SIGNING_KEY_HEX: ${{ secrets.EDGE_SIGNING_KEY_HEX }}
+  #         FILE_URL_SECRET: ${{ secrets.FILE_URL_SECRET }}
+  #       run: pytest -v

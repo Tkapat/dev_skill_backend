@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.audit import audit
 from app.core.deps import invalidate, require
+from app.core.limiter import limiter
 from app.core.security import hash_pw
 from app.db.mongo import db, gen_tracking_code, next_centre_code, oid, ser
 from app.services.credentials import create_login, gen_password
@@ -61,7 +62,8 @@ def create_centre_from_application(a: dict, user, created_by_govt=False):
 
 
 @router.post("/public/applications")
-def create_application(body: dict):
+@limiter.limit("20/minute")
+def create_application(request: Request, body: dict):
     now = datetime.now(timezone.utc)
     tpl = db.trade_templates.find_one({"_id": oid(body["trade_template_id"])})
     if not tpl:
@@ -104,7 +106,8 @@ def create_application(body: dict):
 
 
 @router.get("/public/applications/track")
-def track_application(code: str, phone: str):
+@limiter.limit("20/minute")
+def track_application(request: Request, code: str, phone: str):
     a = db.applications.find_one({"tracking_code": code, "contact_phone": phone})
     if not a:
         raise HTTPException(404, detail={"detail": "Not found", "code": "NOT_FOUND"})
@@ -112,7 +115,8 @@ def track_application(code: str, phone: str):
 
 
 @router.put("/public/applications/{code}")
-def resubmit_application(code: str, body: dict):
+@limiter.limit("20/minute")
+def resubmit_application(request: Request, code: str, body: dict):
     a = db.applications.find_one(
         {"tracking_code": code, "contact_phone": body.get("contact_phone")}
     )
@@ -137,7 +141,8 @@ def resubmit_application(code: str, body: dict):
 
 
 @router.get("/public/schemes")
-def list_schemes():
+@limiter.limit("20/minute")
+def list_schemes(request: Request):
     return ser(list(db.schemes.find({"active": True}).sort("name", 1)))
 
 

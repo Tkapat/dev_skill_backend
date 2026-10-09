@@ -2,10 +2,11 @@ from datetime import datetime, timedelta, timezone
 
 import pyotp
 from cryptography.fernet import Fernet
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.config import settings
 from app.core.deps import GOVT_ROLES, invalidate, require
+from app.core.limiter import limiter
 from app.core.security import (
     REFRESH_DAYS,
     check_pw,
@@ -63,7 +64,8 @@ def _issue(u) -> dict:
 
 
 @router.post("/auth/login")
-def login(body: dict):
+@limiter.limit("10/minute")
+def login(request: Request, body: dict):
     login_id = str(body.get("login_id", "")).strip().lower()
     u = db.users.find_one({"login_id": login_id})
     if u and u.get("locked_until") and u["locked_until"] > _now():

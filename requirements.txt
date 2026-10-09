@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic-settings
 python-dotenv
-pymongo
+pymongo[srv]
 cachetools
 apscheduler
 python-multipart
@@ -19,3 +19,4 @@ torchvision
 argon2-cffi
 pyotp
 python-jose[cryptography]
+slowapi

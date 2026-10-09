@@ -2,8 +2,9 @@ from datetime import datetime, timezone
 
 import gridfs
 from bson import Binary
-from fastapi import APIRouter, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Request, Response, UploadFile
 
+from app.core.limiter import limiter
 from app.db.mongo import db, oid, verify_file_sig
 
 router = APIRouter()
@@ -48,7 +49,8 @@ def get_file(kind: str, fid: str, exp: int = 0, sig: str = ""):
 
 
 @router.post("/public/applications/{code}/documents")
-async def upload_doc(code: str, phone: str = Form(...), file: UploadFile = None):
+@limiter.limit("20/minute")
+async def upload_doc(request: Request, code: str, phone: str = Form(...), file: UploadFile = None):
     a = db.applications.find_one({"tracking_code": code, "contact_phone": phone})
     if not a or len(a.get("documents") or []) >= 5:
         raise HTTPException(

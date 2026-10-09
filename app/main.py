@@ -2,7 +2,25 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.routers import applications, attendance, auth, files, trainees
+from app.core.limiter import limiter, rate_limit_exceeded_handler
+from app.routers import (
+    applications,
+    attendance,
+    auth,
+    cameras,
+    edge,
+    equipment,
+    files,
+    flags,
+    notices,
+    reports,
+    requests,
+    schedule,
+    schemes,
+    staff,
+    trainees,
+    users,
+)
 from app.services import scheduler
 from app.services.sync import register_device
 
@@ -14,8 +32,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.state.limiter = limiter
+app.add_exception_handler(429, rate_limit_exceeded_handler)
 
-for r in (applications.router, trainees.router, attendance.router, auth.router, files.router):
+routers = [
+    applications.router,
+    attendance.router,
+    auth.router,
+    cameras.router,
+    edge.router,
+    equipment.router,
+    files.router,
+    flags.router,
+    notices.router,
+    reports.router,
+    requests.router,
+    schedule.router,
+    schemes.router,
+    staff.router,
+    trainees.router,
+    users.router,
+]
+for r in routers:
     app.include_router(r)
 
 

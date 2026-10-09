@@ -1,1 +1,37 @@
-# routers package
+from app.routers import (
+    applications,
+    attendance,
+    auth,
+    cameras,
+    edge,
+    equipment,
+    files,
+    flags,
+    notices,
+    reports,
+    requests,
+    schedule,
+    schemes,
+    staff,
+    trainees,
+    users,
+)
+
+__all__ = [
+    "applications",
+    "attendance",
+    "auth",
+    "cameras",
+    "edge",
+    "equipment",
+    "files",
+    "flags",
+    "notices",
+    "reports",
+    "requests",
+    "schedule",
+    "schemes",
+    "staff",
+    "trainees",
+    "users",
+]
